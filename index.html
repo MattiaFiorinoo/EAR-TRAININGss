@@ -1,0 +1,608 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Trascritore Note Pianoforte</title>
+    <!-- Libreria ABCJS -->
+    <script src="https://cdn.jsdelivr.net/npm/abcjs@6.3.0/dist/abcjs-basic-min.js"></script>
+    <!-- Librerie per esportazione PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #121214;
+            --card-bg: #1e1e24;
+            --accent-color: #ff3b30;
+            --btn-grey: #3a3a3c;
+            --text-color: #ffffff;
+            --subtext-color: #a1a1a6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            padding: 15px;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        .controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 14px;
+            border: none;
+            border-radius: 14px;
+            font-size: 1rem;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn-record {
+            background-color: var(--btn-grey);
+            color: var(--text-color);
+        }
+
+        .btn-record.recording {
+            background-color: var(--accent-color);
+        }
+
+        .btn-clear {
+            background-color: #2c2c2e;
+            color: #ff453a;
+            max-width: 30%;
+        }
+
+        .btn-fab {
+            position: fixed;
+            bottom: 25px;
+            right: 25px;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background-color: #34c759;
+            color: white;
+            border: none;
+            font-size: 1.4rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.4);
+            cursor: pointer;
+            z-index: 1000;
+            transition: transform 0.2s, background-color 0.2s;
+        }
+
+        .btn-fab:active {
+            transform: scale(0.92);
+        }
+
+        .sheet-container {
+            background: #ffffff;
+            border-radius: 16px;
+            padding: 15px 10px;
+            margin-bottom: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            min-height: 180px;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            justify-content: flex-start;
+            overflow-x: auto;
+            position: relative;
+        }
+
+        .key-info {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: #1c1c1e;
+            margin-bottom: 4px;
+            margin-left: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        #paper {
+            width: 100%;
+            min-width: 300px;
+            background: #ffffff;
+        }
+
+        .timeline-wrapper {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 15px;
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .timeline-title {
+            font-size: 0.85rem;
+            color: var(--subtext-color);
+            margin-bottom: 12px;
+        }
+
+        .timeline {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            overflow-y: auto;
+            padding: 5px;
+            height: 100%;
+            align-content: start;
+            scroll-behavior: smooth;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .timeline::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .timeline::-webkit-scrollbar-thumb {
+            background: #3a3a3c;
+            border-radius: 3px;
+        }
+
+        .note-card {
+            background: #2c2c2e;
+            border: 1px solid #3a3a3c;
+            border-radius: 12px;
+            padding: 10px 6px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            animation: popIn 0.2s ease-out;
+            width: 100%;
+            text-align: center;
+        }
+
+        .note-card .name {
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .note-card .octave {
+            font-size: 0.7rem;
+            color: var(--subtext-color);
+            margin-top: 2px;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.6); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @supports (padding-top: env(safe-area-inset-top)) {
+            body {
+                padding-top: calc(15px + env(safe-area-inset-top));
+                padding-bottom: calc(15px + env(safe-area-inset-bottom));
+            }
+            .btn-fab {
+                bottom: calc(25px + env(safe-area-inset-bottom));
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <button class="btn btn-record" id="recordBtn">
+            <span id="recordIcon">🔴</span>
+            <span id="recordText">Avvia</span>
+        </button>
+        <button class="btn btn-clear" id="clearBtn">
+            🗑️ Cancella
+        </button>
+    </div>
+
+    <div class="sheet-container">
+        <div class="key-info" id="keyInfoDisplay">Tonalità: -</div>
+        <div id="paper"></div>
+    </div>
+
+    <div class="timeline-wrapper">
+        <div class="timeline-title">➡️ Sequenza Note</div>
+        <div class="timeline" id="timeline"></div>
+    </div>
+
+    <button class="btn-fab" id="exportBtn" title="Condividi PDF">
+        🔗
+    </button>
+
+    <script>
+        const NOTE_NAMES = ["Do", "Do♯", "Re", "Re♯", "Mi", "Fa", "Fa♯", "Sol", "Sol♯", "La", "La♯", "Si"];
+        const ABC_MAP = {
+            "Do": "C", "Do♯": "^C", "Re": "D", "Re♯": "^D", "Mi": "E", "Fa": "F", 
+            "Fa♯": "^F", "Sol": "G", "Sol♯": "^G", "La": "A", "La♯": "^A", "Si": "B"
+        };
+
+        const SCALES = [
+            { abcKey: "C",  name: "Do Magg. / La min.",    notes: [0, 2, 4, 5, 7, 9, 11] },
+            { abcKey: "G",  name: "Sol Magg. / Mi min.",   notes: [7, 9, 11, 0, 2, 4, 6] },
+            { abcKey: "D",  name: "Re Magg. / Si min.",    notes: [2, 4, 6, 7, 9, 11, 1] },
+            { abcKey: "A",  name: "La Magg. / Fa♯ min.",  notes: [9, 11, 1, 2, 4, 6, 8] },
+            { abcKey: "E",  name: "Mi Magg. / Do♯ min.",  notes: [4, 6, 8, 9, 11, 1, 3] },
+            { abcKey: "B",  name: "Si Magg. / Sol♯ min.", notes: [11, 1, 3, 4, 6, 8, 10] },
+            { abcKey: "F#", name: "Fa♯ Magg. / Re♯ min.", notes: [6, 8, 10, 11, 1, 3, 5] },
+            { abcKey: "F",  name: "Fa Magg. / Re min.",    notes: [5, 7, 9, 10, 0, 2, 4] },
+            { abcKey: "Bb", name: "Si♭ Magg. / Sol min.",  notes: [10, 0, 2, 3, 5, 7, 9] },
+            { abcKey: "Eb", name: "Mi♭ Magg. / Do min.",   notes: [3, 5, 7, 8, 10, 0, 2] },
+            { abcKey: "Ab", name: "La♭ Magg. / Fa min.",   notes: [8, 10, 0, 1, 3, 5, 7] },
+            { abcKey: "Db", name: "Re♭ Magg. / Si♭ min.",  notes: [1, 3, 5, 6, 8, 10, 0] }
+        ];
+
+        let audioContext = null;
+        let analyser = null;
+        let microphoneStream = null;
+        let isRecording = false;
+        let animationId = null;
+
+        let pendingKey = null;
+        let pendingKeyCount = 0;
+        let confirmedKey = null;
+        let silenceCount = 0;
+
+        const STABILITY_THRESHOLD = 2; // Riconoscimento più rapido
+        const SILENCE_THRESHOLD = 8;
+
+        const recordedItems = [];
+
+        const recordBtn = document.getElementById('recordBtn');
+        const recordIcon = document.getElementById('recordIcon');
+        const recordText = document.getElementById('recordText');
+        const exportBtn = document.getElementById('exportBtn');
+        const clearBtn = document.getElementById('clearBtn');
+        const timelineEl = document.getElementById('timeline');
+        const keyInfoDisplay = document.getElementById('keyInfoDisplay');
+
+        // Disegna il pentagramma vuoto all'avvio
+        renderSheet(false);
+
+        recordBtn.addEventListener('click', async () => {
+            if (!isRecording) {
+                await startRecording();
+            } else {
+                stopRecording();
+            }
+        });
+
+        clearBtn.addEventListener('click', () => {
+            timelineEl.innerHTML = '';
+            recordedItems.length = 0;
+            pendingKey = null;
+            pendingKeyCount = 0;
+            confirmedKey = null;
+            silenceCount = 0;
+            keyInfoDisplay.textContent = "Tonalità: -";
+            renderSheet(false);
+        });
+
+        exportBtn.addEventListener('click', exportToPDF);
+
+        async function startRecording() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
+                }
+
+                microphoneStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: true
+                    }, 
+                    video: false 
+                });
+                
+                const source = audioContext.createMediaStreamSource(microphoneStream);
+                
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 8192;
+
+                source.connect(analyser);
+
+                isRecording = true;
+                recordBtn.classList.add('recording');
+                recordIcon.textContent = '⏹️';
+                recordText.textContent = 'Pausa';
+
+                keyInfoDisplay.textContent = "Tonalità: In ascolto...";
+
+                processAudio();
+            } catch (err) {
+                alert("Impossibile accedere al microfono. Assicurati di aver concesso i permessi.");
+                console.error(err);
+            }
+        }
+
+        function stopRecording() {
+            isRecording = false;
+            if (animationId) cancelAnimationFrame(animationId);
+            if (microphoneStream) {
+                microphoneStream.getTracks().forEach(track => track.stop());
+            }
+            if (audioContext) {
+                audioContext.close();
+            }
+
+            recordBtn.classList.remove('recording');
+            recordIcon.textContent = '🔴';
+            recordText.textContent = 'Avvia';
+
+            renderSheet(true);
+        }
+
+        function processAudio() {
+            if (!isRecording) return;
+
+            const buffer = new Float32Array(analyser.fftSize);
+            analyser.getFloatTimeDomainData(buffer);
+
+            let rms = 0;
+            for (let i = 0; i < buffer.length; i++) {
+                rms += buffer[i] * buffer[i];
+            }
+            rms = Math.sqrt(rms / buffer.length);
+
+            // Abbassata la soglia di volume a 0.015 per cogliere anche note soffuse
+            if (rms > 0.015) {
+                const detectedNote = detectSingleNote(analyser, audioContext.sampleRate);
+
+                if (detectedNote) {
+                    silenceCount = 0;
+                    
+                    const eventData = {
+                        name: detectedNote.name,
+                        octave: detectedNote.octave,
+                        index: detectedNote.index,
+                        key: `${detectedNote.name}_${detectedNote.octave}`
+                    };
+
+                    if (pendingKey === eventData.key) {
+                        pendingKeyCount++;
+                    } else {
+                        pendingKey = eventData.key;
+                        pendingKeyCount = 1;
+                    }
+
+                    if (pendingKeyCount >= STABILITY_THRESHOLD && confirmedKey !== eventData.key) {
+                        confirmedKey = eventData.key;
+                        recordedItems.push(eventData);
+                        addItemToTimeline(eventData);
+                        renderSheet(false);
+                    }
+                }
+            } else {
+                silenceCount++;
+                if (silenceCount > SILENCE_THRESHOLD) {
+                    confirmedKey = null;
+                    pendingKey = null;
+                    pendingKeyCount = 0;
+                }
+            }
+
+            animationId = requestAnimationFrame(processAudio);
+        }
+
+        function detectSingleNote(analyserNode, sampleRate) {
+            const freqData = new Float32Array(analyserNode.frequencyBinCount);
+            analyserNode.getFloatFrequencyData(freqData);
+
+            const minDb = -70;
+            const binSize = sampleRate / analyserNode.fftSize;
+
+            let maxDb = -Infinity;
+            let bestFreq = -1;
+
+            for (let i = 5; i < freqData.length - 10; i++) {
+                if (freqData[i] > minDb && freqData[i] > freqData[i - 1] && freqData[i] > freqData[i + 1]) {
+                    const freq = i * binSize;
+                    // Ampliato il range di frequenze ascoltate: da ~65Hz (C2) fino a 2100Hz (C7)
+                    if (freq >= 65 && freq <= 2100) {
+                        if (freqData[i] > maxDb) {
+                            maxDb = freqData[i];
+                            bestFreq = freq;
+                        }
+                    }
+                }
+            }
+
+            if (bestFreq < 0) return null;
+            return getNoteFromFrequency(bestFreq);
+        }
+
+        function getNoteFromFrequency(frequency) {
+            const A4 = 440;
+            const noteNum = 12 * (Math.log(frequency / A4) / Math.log(2));
+            const midiNote = Math.round(noteNum) + 69;
+            const noteIndex = (midiNote % 12 + 12) % 12;
+            const octave = Math.floor(midiNote / 12) - 1;
+
+            return {
+                name: NOTE_NAMES[noteIndex],
+                octave: octave,
+                midi: midiNote,
+                index: noteIndex
+            };
+        }
+
+        function detectBestScale() {
+            if (recordedItems.length === 0) return SCALES[0];
+
+            const noteCounts = new Array(12).fill(0);
+            recordedItems.forEach(item => {
+                noteCounts[item.index]++;
+            });
+
+            let bestScale = SCALES[0];
+            let maxMatches = -1;
+
+            SCALES.forEach(scale => {
+                let matches = 0;
+                for (let i = 0; i < 12; i++) {
+                    if (scale.notes.includes(i)) {
+                        matches += noteCounts[i];
+                    }
+                }
+                if (matches > maxMatches) {
+                    maxMatches = matches;
+                    bestScale = scale;
+                }
+            });
+
+            return bestScale;
+        }
+
+        function addItemToTimeline(item) {
+            const card = document.createElement('div');
+            card.className = 'note-card';
+            card.innerHTML = `
+                <div class="name">${item.name}</div>
+                <div class="octave">Ottava ${item.octave}</div>
+            `;
+
+            timelineEl.appendChild(card);
+            timelineEl.scrollTop = timelineEl.scrollHeight;
+        }
+
+        // Calcola la rappresentazione esatta della nota per ABCjs
+        function getABCNoteString(name, octave) {
+            let baseABC = ABC_MAP[name] || "C";
+            if (octave <= 2) return baseABC + ",,";
+            if (octave === 3) return baseABC + ",";
+            if (octave === 4) return baseABC;
+            if (octave === 5) return baseABC.toLowerCase();
+            if (octave === 6) return baseABC.toLowerCase() + "'";
+            if (octave >= 7) return baseABC.toLowerCase() + "''";
+            return baseABC;
+        }
+
+        function renderSheet(analyzeMode = false) {
+            let currentScale = SCALES[0];
+            
+            if (analyzeMode && recordedItems.length > 0) {
+                currentScale = detectBestScale();
+                keyInfoDisplay.textContent = `Tonalità: ${currentScale.name}`;
+            } else if (!analyzeMode && recordedItems.length === 0) {
+                keyInfoDisplay.textContent = `Tonalità: -`;
+            }
+
+            let notesString = "";
+
+            if (recordedItems.length > 0) {
+                for (let i = 0; i < recordedItems.length; i++) {
+                    const item = recordedItems[i];
+                    const abcNote = getABCNoteString(item.name, item.octave);
+
+                    notesString += abcNote + " ";
+
+                    if ((i + 1) % 4 === 0) {
+                        notesString += "| ";
+                    }
+                }
+            } else {
+                notesString = "z4"; // Pausa di default se non ci sono note
+            }
+
+            const abcHeader = "X:1\n" +
+                              "M:4/4\n" +
+                              "L:1/4\n" +
+                              `K:${analyzeMode ? currentScale.abcKey : "C"} clef=treble\n`;
+            
+            const fullAbc = abcHeader + notesString;
+
+            try {
+                ABCJS.renderAbc("paper", fullAbc, {
+                    responsive: "resize",
+                    scale: 1,
+                    add_classes: true,
+                    staffwidth: 300
+                });
+            } catch(e) {
+                console.error("Errore nel rendering dello spartito:", e);
+            }
+        }
+
+        async function exportToPDF() {
+            const paperEl = document.querySelector('.sheet-container');
+            
+            if (recordedItems.length === 0) {
+                alert("Nessuna nota registrata da esportare.");
+                return;
+            }
+
+            exportBtn.innerText = "⏳";
+            exportBtn.disabled = true;
+
+            try {
+                const canvas = await html2canvas(paperEl, {
+                    scale: 2,
+                    backgroundColor: "#ffffff"
+                });
+
+                const imgData = canvas.toDataURL('image/png');
+                const { jsPDF } = window.jspdf;
+                
+                const pdf = new jsPDF('p', 'mm', 'a4');
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const imgWidth = pdfWidth - 20; 
+                const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+                pdf.setFontSize(16);
+                pdf.text("Spartito Trascritto", 10, 15);
+                pdf.addImage(imgData, 'PNG', 10, 25, imgWidth, imgHeight);
+
+                const pdfBlob = pdf.output('blob');
+                const pdfFile = new File([pdfBlob], "Spartito.pdf", { type: "application/pdf" });
+
+                if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+                    await navigator.share({
+                        files: [pdfFile],
+                        title: 'Spartito Pianoforte',
+                        text: 'Ecco lo spartito registrato.'
+                    });
+                } else {
+                    pdf.save("Spartito.pdf");
+                }
+            } catch (err) {
+                console.error(err);
+                alert("Errore durante la generazione del PDF.");
+            } finally {
+                exportBtn.innerText = "🔗";
+                exportBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
